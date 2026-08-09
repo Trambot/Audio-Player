@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ app_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <canvas id="visualizer"></canvas>
+  <!-- Custom Backdrop Uploader -->
+  <div class="backdrop-controls">
+    <label for="bg-upload" class="glass-btn">🖼️ Change Backdrop</label>
+    <input type="file" id="bg-upload" accept="image/*" style="display: none;">
+  </div>
+
+  <div class="app-container">
+    <header class="app-header">
+      <h1>{{ app_name }}</h1>
+    </header>
+
+    <div class="track-list">
+      <ul>
+        {% for track in tracks %}
+          <!-- The ENTIRE row is now clickable! -->
+          <li class="track-card" 
+              data-url="{{ url_for('static', filename='audio/' + track.filename) }}"
+              data-name="{{ track.filename }}"
+              data-id="{{ track.id }}"
+              onclick="playFromButton(this)">
+            
+            <div class="track-left-side">
+              <!-- Album Cover Image Placeholder -->
+              <div class="list-cover">🎵</div>
+              
+              <div class="track-details">
+                <strong>{{ track.filename }}</strong> 
+                <div class="track-stats">
+                  Plays: <span id="plays-{{track.id}}">{{ track.plays }}</span> • Rating: {{ track.rating }}/5
+                </div>
+              </div>
+            </div>
+            
+            <div class="track-right-side">
+              <span class="play-hint">▶</span>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div style="height: 120px;"></div>  
+  </div>
+
+  <!-- THE GLASS PLAYER BAR -->
+  <audio id="master-audio"></audio>
+
+  <div id="premium-player" class="glass-panel">
+    <div class="player-left">
+      <div class="album-art" id="player-cover">🎵</div>
+      <div class="track-info">
+        <div id="current-title">No track selected</div>
+        <div id="current-artist">Ready to play</div>
+      </div>
+    </div>
+
+    <div class="player-center">
+      <div class="playback-controls">
+        <button id="prev-btn">⏮</button>
+        <button id="play-pause-btn" onclick="togglePlay()">▶</button>
+        <button id="next-btn">⏭</button>
+      </div>
+      <div class="progress-container">
+        <span id="current-time">0:00</span>
+        <input type="range" id="seek-bar" value="0" max="100">
+        <span id="total-time">0:00</span>
+      </div>
+    </div>
+
+    <div class="player-right">
+      <span class="vol-icon">🔊</span>
+      <input type="range" id="volume-bar" min="0" max="1" step="0.01" value="1" oninput="changeVolume(this.value)">
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT -->
+  <script>
+    // --- BACKDROP UPLOAD LOGIC ---
+    document.getElementById('bg-upload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          // Instantly sets the background image without needing a server upload!
+          document.body.style.backgroundImage = `url(${event.target.result})`;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // --- AUDIO PLAYER LOGIC ---
+    const masterAudio = document.getElementById('master-audio');
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const currentTitle = document.getElementById('current-title');
+    const seekBar = document.getElementById('seek-bar');
+    const currentTimeEl = document.getElementById('current-time');
+    const totalTimeEl = document.getElementById('total-time');
+
+    function formatTime(seconds) {
+      if (isNaN(seconds)) return "0:00";
+      const min = Math.floor(seconds / 60);
+      const sec = Math.floor(seconds % 60);
+      return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+    }
+    
+    function playFromButton(rowElement) {
+      const fileUrl = rowElement.getAttribute('data-url');
+      const trackName = rowElement.getAttribute('data-name');
+      const trackId = rowElement.getAttribute('data-id');
+      
+      // Highlight the currently playing row
+      document.querySelectorAll('.track-card').forEach(el => el.classList.remove('playing'));
+      rowElement.classList.add('playing');
+
+      loadAndPlay(fileUrl, trackName, trackId);
+    }
+
+    function loadAndPlay(fileUrl, trackName, trackId) {
+      currentTitle.innerText = trackName.replace('.flac', '').replace('.mp3', '').replace('.wav', '');
+      masterAudio.src = fileUrl;
+      masterAudio.play();
+      playPauseBtn.innerText = "⏸"; 
+      fetch(`/add_play/${trackId}`, {method: 'POST'}); 
+    }
+
+    function togglePlay() {
+      if (masterAudio.src === "") return; 
+      if (masterAudio.paused) {
+        masterAudio.play();
+        playPauseBtn.innerText = "⏸";
+      } else {
+        masterAudio.pause();
+        playPauseBtn.innerText = "▶";
+      }
+    }
+
+    function changeVolume(val) {
+      masterAudio.volume = val;
+    }
+
+    masterAudio.addEventListener('timeupdate', () => {
+      seekBar.value = masterAudio.currentTime;
+      currentTimeEl.innerText = formatTime(masterAudio.currentTime);
+    });
+
+    masterAudio.addEventListener('loadedmetadata', () => {
+      seekBar.max = masterAudio.duration;
+      totalTimeEl.innerText = formatTime(masterAudio.duration);
+    });
+
+    seekBar.addEventListener('input', () => {
+      masterAudio.currentTime = seekBar.value;
+    });
+  </script>
+</body>
+</html>

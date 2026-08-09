@@ -1,0 +1,200 @@
+/* --- GLOBAL THEME (GLASS & CUSTOM BACKDROP) --- */
+body {
+  margin: 0;
+  padding: 0;
+  
+  /* 1. Point this to your exact image filename */
+  background-image: url('my_bg.jpg'); 
+  
+  /* 2. These three lines make it scale perfectly and stay fixed */
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed; 
+  
+  color: white;
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+}
+/* --- BACKGROUND VISUALIZER --- */
+#visualizer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1; /* Puts it behind everything */
+  pointer-events: none; /* Ensures you can still click the buttons on top of it */
+}
+
+.app-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 60px 20px;
+}
+
+.app-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 5px;
+  text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+
+.app-header p {
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 0;
+}
+
+/* --- THE GLASS EFFECT (GLASSMORPHISM) --- */
+.glass-panel, .track-card, .glass-btn {
+  background: rgba(255, 255, 255, 0.1); /* Clear, translucent white */
+  backdrop-filter: blur(15px);          /* The frosted glass blur */
+  -webkit-backdrop-filter: blur(15px);  /* Safari support */
+  border: 1px solid rgba(255, 255, 255, 0.2); /* Thin translucent border */
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* --- BACKDROP UPLOADER BUTTON --- */
+.backdrop-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+.glass-btn {
+  padding: 10px 20px;
+  border-radius: 30px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: background 0.3s;
+}
+
+.glass-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* --- TRACK CARDS (NOW CLICKABLE!) --- */
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+.track-card {
+  border-radius: 12px;
+  padding: 15px 20px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer; /* Turns mouse into a pointer hand */
+  transition: all 0.2s ease;
+}
+
+.track-card:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(5px); /* Slides slightly to the right on hover */
+}
+
+/* When this specific song is playing */
+.track-card.playing {
+  background: rgba(255, 255, 255, 0.3);
+  border-left: 5px solid white;
+}
+
+.track-left-side {
+  display: flex;
+  align-items: center;
+}
+
+/* Album Cover Placeholder in the List */
+.list-cover {
+  width: 50px;
+  height: 50px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  margin-right: 15px;
+}
+
+.track-details strong {
+  font-size: 1.1rem;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.track-stats {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 4px;
+}
+
+.play-hint {
+  opacity: 0; /* Hidden by default */
+  font-size: 1.5rem;
+  transition: opacity 0.3s;
+}
+
+.track-card:hover .play-hint {
+  opacity: 1; /* Shows the play icon when you hover over the row */
+}
+
+/* --- THE GLOBAL PLAYER BAR --- */
+#premium-player {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 90px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 30px;
+  box-sizing: border-box;
+  z-index: 1000;
+  /* Glass background is handled by .glass-panel class above */
+}
+
+.player-left, .player-center, .player-right {
+  display: flex;
+  align-items: center;
+}
+.player-left { width: 30%; }
+.player-center { width: 40%; flex-direction: column; justify-content: center;}
+.player-right { width: 30%; justify-content: flex-end;}
+
+.album-art {
+  width: 56px; height: 56px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  display: flex; justify-content: center; align-items: center;
+  font-size: 24px; margin-right: 15px;
+}
+
+#current-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; text-shadow: 0 1px 2px rgba(0,0,0,0.8);}
+#current-artist { font-size: 12px; color: rgba(255, 255, 255, 0.7); }
+
+.playback-controls button {
+  background: none; border: none; color: white;
+  font-size: 20px; cursor: pointer; margin: 0 20px;
+  opacity: 0.7; transition: all 0.2s;
+}
+.playback-controls button:hover { opacity: 1; transform: scale(1.1); }
+#play-pause-btn { font-size: 32px; opacity: 1;}
+
+.progress-container { display: flex; align-items: center; width: 100%; max-width: 400px; }
+.progress-container span { font-size: 11px; color: rgba(255,255,255,0.7); min-width: 45px; text-align: center; }
+
+/* Clear Glass Sliders */
+input[type=range] {
+  -webkit-appearance: none; 
+  background: rgba(255, 255, 255, 0.2); 
+  height: 5px; border-radius: 3px; cursor: pointer; flex-grow: 1;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; 
+  width: 14px; height: 14px;
+  background: white; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.3);
+}
+#seek-bar { margin: 0 10px; }
+#volume-bar { width: 90px; margin-left: 10px; }
