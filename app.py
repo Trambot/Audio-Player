@@ -8,12 +8,7 @@ from pyngrok import ngrok
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///riff_vault.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-# ==========================================
-# YOUR EXTERNAL MUSIC FOLDER PATH
-# ==========================================
-EXTERNAL_MUSIC_FOLDER = "D:/music/FLAC"
-app.config["UPLOAD_FOLDER"] = EXTERNAL_MUSIC_FOLDER
+app.config["UPLOAD_FOLDER"] = "D:/music/FLAC"
 
 db = SQLAlchemy(app)
 
@@ -28,16 +23,22 @@ class Track(db.Model):
     filename = db.Column(db.String(300), unique=True, nullable=False)
     plays = db.Column(db.Integer, default=0)
     rating = db.Column(db.Integer, default=0)
+    bitrate = db.Column(db.String(50), default="Unknown bps")
+    sample_rate = db.Column(db.String(50), default="Unknown Hz")
 
 class Playlist(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
-    tracks = db.relationship('Track', secondary=playlist_tracks, lazy='subquery',
-        backref=db.backref('playlists', lazy=True))
+    is_auto = db.Column(db.Boolean, default=False) 
+    tracks = db.relationship('Track', secondary=playlist_tracks, lazy='subquery', backref=db.backref('playlists', lazy=True))
 
-# --- AUTO-SYNC & M3U GENERATOR ---
+class SongRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+
+# --- AUTO-SYNC ---
 def sync_library():
-    print("🔄 Syncing library and generating .m3u playlists...")
+    print("🔄 Syncing library and protecting OG Playlists...")
     if not os.path.exists(app.config["UPLOAD_FOLDER"]):
         os.makedirs(app.config["UPLOAD_FOLDER"])
 
@@ -58,25 +59,30 @@ def sync_library():
                 
                 track = Track.query.filter_by(filename=rel_path).first()
                 if not track:
-                    track = Track(filename=rel_path, plays=0, rating=0)
+                    audio = MutagenFile(full_path)
+                    br_str, sr_str = "Unknown bps", "Unknown Hz"
+                    if audio and audio.info:
+                        br = getattr(audio.info, 'bitrate', 0)
+                        sr = getattr(audio.info, 'sample_rate', 0)
+                        if br: br_str = f"{int(br/1000)} kbps" if br > 1000 else f"{br} bps"
+                        if sr: sr_str = f"{sr} Hz"
+
+                    track = Track(filename=rel_path, plays=0, rating=0, bitrate=br_str, sample_rate=sr_str)
                     db.session.add(track)
                     db.session.commit()
                 
                 folder_tracks_map[folder_name].append(track)
 
     for folder_name, tracks in folder_tracks_map.items():
-        if not tracks:
-            continue
-            
+        if not tracks: continue
         playlist = Playlist.query.filter_by(name=folder_name).first()
         if not playlist:
-            playlist = Playlist(name=folder_name)
+            playlist = Playlist(name=folder_name, is_auto=True) 
             db.session.add(playlist)
             
         playlist.tracks = []
         for track in tracks:
             playlist.tracks.append(track)
-            
         db.session.commit()
 
         if folder_name != "Root":
@@ -93,6 +99,7 @@ def sync_library():
 @app.route("/")
 def home():
     all_playlists = Playlist.query.all()
+    song_requests = SongRequest.query.all()
     search_query = request.args.get("q")
     playlist_id = request.args.get("playlist_id")
     current_playlist = None
@@ -107,29 +114,64 @@ def home():
         
     return render_template("home.html", app_name="Riff Vault", 
                            tracks=db_tracks, playlists=all_playlists, 
-                           current_playlist=current_playlist)
+                           current_playlist=current_playlist, song_requests=song_requests)
 
 @app.route("/create_playlist", methods=["POST"])
 def create_playlist():
     name = request.form.get("playlist_name")
-    if name:
-        if not Playlist.query.filter_by(name=name).first():
-            new_pl = Playlist(name=name)
-            db.session.add(new_pl)
-            db.session.commit()
+    if name and not Playlist.query.filter_by(name=name).first():
+        db.session.add(Playlist(name=name, is_auto=False))
+        db.session.commit()
+    return redirect(url_for("home"))
+
+@app.route("/delete_playlist/<int:pl_id>", methods=["POST"])
+def delete_playlist(pl_id):
+    pl = Playlist.query.get(pl_id)
+    if pl and not pl.is_auto: 
+        db.session.delete(pl)
+        db.session.commit()
     return redirect(url_for("home"))
 
 @app.route("/add_to_playlist", methods=["POST"])
 def add_to_playlist():
-    track_id = request.form.get("track_id")
-    playlist_id = request.form.get("playlist_id")
-    if track_id and playlist_id:
-        track = Track.query.get(track_id)
-        playlist = Playlist.query.get(playlist_id)
-        if track and playlist and track not in playlist.tracks:
-            playlist.tracks.append(track)
-            db.session.commit()
+    track = Track.query.get(request.form.get("track_id"))
+    playlist = Playlist.query.get(request.form.get("playlist_id"))
+    if track and playlist and not playlist.is_auto and track not in playlist.tracks:
+        playlist.tracks.append(track)
+        db.session.commit()
     return redirect(request.referrer or url_for("home"))
+
+@app.route("/remove_from_playlist", methods=["POST"])
+def remove_from_playlist():
+    track = Track.query.get(request.form.get("track_id"))
+    playlist = Playlist.query.get(request.form.get("playlist_id"))
+    if track and playlist and not playlist.is_auto and track in playlist.tracks:
+        playlist.tracks.remove(track)
+        db.session.commit()
+    return redirect(request.referrer or url_for("home"))
+
+@app.route("/request_song", methods=["POST"])
+def request_song():
+    title = request.form.get("title")
+    if title:
+        db.session.add(SongRequest(title=title))
+        db.session.commit()
+    return redirect(url_for("home"))
+
+@app.route("/clear_request/<int:req_id>", methods=["POST"])
+def clear_request(req_id):
+    req = SongRequest.query.get(req_id)
+    if req:
+        db.session.delete(req)
+        db.session.commit()
+    return redirect(url_for("home"))
+
+@app.route("/download/<int:track_id>")
+def download_track(track_id):
+    track = Track.query.get(track_id)
+    if track:
+        return send_from_directory(app.config["UPLOAD_FOLDER"], track.filename, as_attachment=True)
+    return redirect(url_for("home"))
 
 @app.route("/add_play/<int:track_id>", methods=["POST"])
 def add_play(track_id):
@@ -150,8 +192,7 @@ def get_cover(filename):
         audio = MutagenFile(file_path)
         if audio:
             if hasattr(audio, 'pictures') and audio.pictures:
-                art = audio.pictures[0].data
-                return send_file(io.BytesIO(art), mimetype='image/jpeg')
+                return send_file(io.BytesIO(audio.pictures[0].data), mimetype='image/jpeg')
             elif audio.tags:
                 for tag in audio.tags.values():
                     if tag.__class__.__name__ == 'APIC':
@@ -161,7 +202,6 @@ def get_cover(filename):
     transparent_pixel = b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b'
     return send_file(io.BytesIO(transparent_pixel), mimetype='image/gif')
 
-# Route for PWA Service Worker
 @app.route('/sw.js')
 def sw():
     return app.send_static_file('sw.js')
@@ -171,13 +211,6 @@ if __name__ == "__main__":
         db.create_all()
         sync_library()
         
-    # Replace with your actual auth token if required by Ngrok
-    ngrok.set_auth_token("3Hi7OdOtZQ6Lx7U7gmF4nXU4q5w_4KV56fASbup47SxcfBv4N")
-    
     public_url = ngrok.connect(5000).public_url
-    print("\n" + "="*50)
-    print(f"🚀 YOUR APP IS LIVE GLOBALLY AT: {public_url}")
-    print("📱 Copy and paste this exact link into ANY phone browser!")
-    print("="*50 + "\n")
-    
+    print(f"\n🚀 LIVE GLOBALLY AT: {public_url}\n")
     app.run(host="0.0.0.0", port=5000, debug=False)

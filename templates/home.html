@@ -6,35 +6,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0b0c10">
   
-  <!-- PWA Manifest Link -->
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon.png') }}">
-  
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=10">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=15">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.umd.js"></script>
 </head>
 
-<body>
+<body id="dynamic-body">
   <canvas id="visualizer"></canvas>
+  <div id="dynamic-overlay"></div> 
 
   <div class="app-container">
-    <header class="app-header">
-      <div class="header-flex">
-        <div>
-          <h1>{{ app_name }}</h1>
-          <form action="/" method="GET" class="search-form">
-            <input type="text" name="q" placeholder="🔍 Search track..." class="glass-input">
-            <button type="submit" class="glass-btn">Search</button>
-            <a href="/" class="glass-btn" style="text-decoration:none;">Clear</a>
-          </form>
+    <div class="sticky-header-wrapper">
+      <header class="app-header">
+        <div class="header-flex">
+          <div>
+            <h1>{{ app_name }}</h1>
+            <form action="/" method="GET" class="search-form">
+              <input type="text" name="q" placeholder="🔍 Search track..." class="glass-input">
+              <button type="submit" class="glass-btn">Search</button>
+              <a href="/" class="glass-btn" style="text-decoration:none;">Clear</a>
+            </form>
+          </div>
+          <div class="top-controls">
+            <label for="bg-upload" class="glass-btn">🖼️ Backdrop</label>
+            <input type="file" id="bg-upload" accept="image/*" style="display: none;">
+          </div>
         </div>
-
-        <div class="top-controls">
-          <label for="bg-upload" class="glass-btn">🖼️ Backdrop</label>
-          <input type="file" id="bg-upload" accept="image/*" style="display: none;">
-        </div>
-      </div>
-    </header>
+      </header>
+    </div>
 
     <!-- PLAYLISTS -->
     <div class="playlists-container glass-panel">
@@ -42,9 +44,14 @@
       <div class="playlist-pills">
         <a href="/" class="playlist-pill {% if not current_playlist %}active{% endif %}">All Tracks</a>
         {% for pl in playlists %}
-          <a href="/?playlist_id={{ pl.id }}" class="playlist-pill {% if current_playlist and current_playlist.id == pl.id %}active{% endif %}">
-            🎵 {{ pl.name }}
-          </a>
+          <div class="playlist-group">
+            <a href="/?playlist_id={{ pl.id }}" class="playlist-pill {% if current_playlist and current_playlist.id == pl.id %}active{% endif %}">🎵 {{ pl.name }}</a>
+            {% if not pl.is_auto %}
+            <form action="/delete_playlist/{{ pl.id }}" method="POST" style="margin:0;">
+                <button type="submit" class="delete-btn" title="Delete Playlist">✖</button>
+            </form>
+            {% endif %}
+          </div>
         {% endfor %}
       </div>
 
@@ -54,35 +61,29 @@
       </form>
     </div>
 
-    <!-- TOP PLAYS (SMALL CARDS) -->
-    {% if not current_playlist and not request.args.get('q') %}
-      <h3 class="section-title">Top Plays</h3>
-      <div class="small-card-grid">
-        {% set top_tracks = tracks | sort(attribute='plays', reverse=true) %}
-        {% for track in top_tracks[:6] %}
-          <div class="track-item small-card glass-panel" 
-               data-url="/stream/{{ track.filename }}"
-               data-name="{{ track.filename }}" data-id="{{ track.id }}" 
-               onclick="playFromButton(this)">
-            
-            <div class="small-cover-container">
-              <img src="/cover/{{ track.filename }}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 6px;" loading="lazy">
-              <div class="play-overlay">▶</div>
-            </div>
-            
-            <div class="small-card-details">
-              <strong>{{ track.filename.split('/')[-1] }}</strong>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+    <!-- REQUEST BOARD -->
+    <div class="playlists-container glass-panel">
+        <h3 style="margin-top: 0; font-size: 1rem;">🎧 Song Requests</h3>
+        <ul class="request-list">
+            {% for req in song_requests %}
+                <li>
+                    <span>{{ req.title }}</span>
+                    <form action="/clear_request/{{ req.id }}" method="POST" style="margin:0;">
+                        <button type="submit" class="glass-btn small-btn" style="padding: 2px 8px; font-size:0.7rem;">Clear</button>
+                    </form>
+                </li>
+            {% else %}
+                <li style="color: rgba(255,255,255,0.5); font-size: 0.85rem;">No pending requests.</li>
+            {% endfor %}
+        </ul>
+        <form action="/request_song" method="POST" class="create-playlist-form" style="margin-top: 10px;">
+          <input type="text" name="title" placeholder="Request a song..." class="glass-input small-input" style="flex-grow: 1;" required>
+          <button type="submit" class="glass-btn small-btn">Submit</button>
+        </form>
+    </div>
 
     <!-- ALL TRACKS (VERTICAL LIST) -->
-    <h3 class="section-title">
-      {% if current_playlist %}Playing: {{ current_playlist.name }}{% else %}All Tracks{% endif %}
-    </h3>
-    
+    <h3 class="section-title glow-text">{% if current_playlist %}Playing: {{ current_playlist.name }}{% else %}Vault Tracks{% endif %}</h3>
     <div class="vertical-track-list">
       {% for track in tracks %}
         <div class="track-item track-row glass-panel" 
@@ -91,53 +92,68 @@
              onclick="playFromButton(this)">
 
           <div class="track-left-side">
-            <img src="/cover/{{ track.filename }}" class="list-cover" style="object-fit: cover; background: rgba(255,255,255,0.1);" loading="lazy">
+            <img src="/cover/{{ track.filename }}" class="list-cover" style="object-fit: cover;" loading="lazy">
             <div class="track-details">
               <strong>{{ track.filename.split('/')[-1] }}</strong>
               <div class="track-stats">
-                Plays: <span id="plays-{{track.id}}">{{ track.plays }}</span>
+                Plays: <span id="plays-{{track.id}}">{{ track.plays }}</span> • {{ track.bitrate }} • {{ track.sample_rate }}
               </div>
             </div>
           </div>
 
           <div class="track-right-side">
+            <a href="/download/{{ track.id }}" class="glass-btn small-btn mini-btn" title="Download FLAC" onclick="event.stopPropagation();">⬇</a>
+            
             <form action="/add_to_playlist" method="POST" class="add-to-pl-form" onclick="event.stopPropagation();">
               <input type="hidden" name="track_id" value="{{ track.id }}">
               <select name="playlist_id" class="glass-input small-input mini-dropdown" required>
                 <option value="" disabled selected>Add to...</option>
                 {% for pl in playlists %}
-                  <option value="{{ pl.id }}">{{ pl.name }}</option>
+                  {% if not pl.is_auto %}
+                    <option value="{{ pl.id }}">{{ pl.name }}</option>
+                  {% endif %}
                 {% endfor %}
               </select>
               <button type="submit" class="glass-btn small-btn mini-btn">+</button>
             </form>
-            <span class="play-hint">▶</span>
+            
+            {% if current_playlist and not current_playlist.is_auto %}
+              <form action="/remove_from_playlist" method="POST" style="margin:0;" onclick="event.stopPropagation();">
+                  <input type="hidden" name="track_id" value="{{ track.id }}">
+                  <input type="hidden" name="playlist_id" value="{{ current_playlist.id }}">
+                  <button type="submit" class="glass-btn small-btn mini-btn" style="color: #ff4c4c; border-color: rgba(255,76,76,0.3);" title="Remove from Playlist">✖</button>
+              </form>
+            {% endif %}
+
+            <div class="action-indicators">
+                <span class="play-icon">▶</span>
+                <div class="eq-anim">
+                    <div class="eq-bar eq-1"></div>
+                    <div class="eq-bar eq-2"></div>
+                    <div class="eq-bar eq-3"></div>
+                </div>
+            </div>
           </div>
         </div>
-      {% else %}
-        <p style="text-align: center; color: rgba(255,255,255,0.5); font-size: 0.9rem;">No tracks found.</p>
       {% endfor %}
     </div>
-    
-    <div style="height: 120px;"></div>
+    <div style="height: 140px;"></div>
   </div>
 
-  <!-- THE GLASS PLAYER BAR -->
-  <audio id="master-audio"></audio>
-
+  <!-- FLOATING PLAYER BAR -->
+  <audio id="master-audio" crossorigin="anonymous"></audio>
   <div id="premium-player" class="glass-panel">
     <div class="player-left">
-      <img src="" class="album-art" id="player-cover" style="object-fit: cover; display: none;">
+      <img src="" class="album-art" id="player-cover" style="object-fit: cover; display: none;" crossorigin="anonymous">
       <div class="album-art" id="player-cover-fallback">🎵</div>
       <div class="track-info">
         <div id="current-title">No track selected</div>
         <div id="current-artist">Ready to play</div>
       </div>
     </div>
-
     <div class="player-center">
       <div class="playback-controls">
-        <button id="shuffle-btn" onclick="toggleShuffle()" title="Shuffle">🔀</button>
+        <button id="shuffle-btn" onclick="toggleShuffle()">🔀</button>
         <button id="prev-btn" onclick="playPrev()">⏮</button>
         <button id="play-pause-btn" onclick="togglePlay()">▶</button>
         <button id="next-btn" onclick="playNext(true)">⏭</button>
@@ -148,7 +164,6 @@
         <span id="total-time">0:00</span>
       </div>
     </div>
-
     <div class="player-right">
       <span class="vol-icon">🔊</span>
       <input type="range" id="volume-bar" min="0" max="1" step="0.01" value="1" oninput="changeVolume(this.value)">
@@ -156,196 +171,103 @@
   </div>
 
   <script>
-    // Register Service Worker for PWA
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').then(reg => {
-          console.log('ServiceWorker registered!', reg);
-        }).catch(err => {
-          console.log('ServiceWorker registration failed: ', err);
-        });
-      });
-    }
-
-    document.getElementById('bg-upload').addEventListener('change', function (e) {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          document.body.style.backgroundImage = `url(${event.target.result})`;
-        };
-        reader.readAsDataURL(file);
-      }
-    });
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
 
     const masterAudio = document.getElementById('master-audio');
     const playPauseBtn = document.getElementById('play-pause-btn');
     const currentTitle = document.getElementById('current-title');
     const seekBar = document.getElementById('seek-bar');
-    const currentTimeEl = document.getElementById('current-time');
-    const totalTimeEl = document.getElementById('total-time');
-    const volumeBar = document.getElementById('volume-bar');
-    const shuffleBtn = document.getElementById('shuffle-btn');
+    const playerCover = document.getElementById('player-cover');
+    const overlay = document.getElementById('dynamic-overlay');
+    const premiumPlayer = document.getElementById('premium-player');
+    const colorThief = new ColorThief();
+
+    playerCover.onload = function() {
+        if (playerCover.src && !playerCover.src.includes('gif')) {
+            setTimeout(() => {
+                try {
+                    const color = colorThief.getColor(playerCover);
+                    const rgbStr = `${color[0]}, ${color[1]}, ${color[2]}`;
+                    
+                    document.documentElement.style.setProperty('--accent-color', `rgb(${rgbStr})`);
+                    overlay.style.background = `radial-gradient(circle at 50% 100%, rgba(${rgbStr}, 0.3) 0%, rgba(0,0,0,0) 60%)`;
+                    
+                    // NEW: Keep it translucent, but pop with the cover's color
+                    premiumPlayer.style.backgroundColor = `rgba(${rgbStr}, 0.15)`;
+                    premiumPlayer.style.borderColor = `rgba(${rgbStr}, 0.4)`;
+                    premiumPlayer.style.boxShadow = `0 15px 40px rgba(${rgbStr}, 0.5)`;
+                } catch(e) {
+                    document.documentElement.style.setProperty('--accent-color', `rgb(178, 120, 255)`);
+                    premiumPlayer.style.backgroundColor = `rgba(255, 255, 255, 0.1)`;
+                }
+            }, 50);
+        }
+    };
 
     let isShuffle = false;
     let currentTrackIndex = -1;
-    let isTransitioning = false;
 
-    function getPlaylist() {
-      return Array.from(document.querySelectorAll('.track-item'));
-    }
-
-    function formatTime(seconds) {
-      if (isNaN(seconds)) return "0:00";
-      const min = Math.floor(seconds / 60);
-      const sec = Math.floor(seconds % 60);
-      return `${min}:${sec < 10 ? '0' : ''}${sec}`;
-    }
-
-    function toggleShuffle() {
-      isShuffle = !isShuffle;
-      shuffleBtn.classList.toggle('active', isShuffle);
-    }
+    function getPlaylist() { return Array.from(document.querySelectorAll('.track-row')); }
+    function formatTime(s) { if(isNaN(s)) return "0:00"; let m=Math.floor(s/60), sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}`; }
+    function toggleShuffle() { isShuffle = !isShuffle; document.getElementById('shuffle-btn').classList.toggle('active', isShuffle); }
 
     function playFromButton(rowElement) {
       setupVisualizer();
-      const playlist = getPlaylist();
-      currentTrackIndex = playlist.indexOf(rowElement);
-      fadeAndPlay(rowElement);
+      currentTrackIndex = getPlaylist().indexOf(rowElement);
+      executePlay(rowElement);
     }
 
     function playNext(manual = false) {
       const playlist = getPlaylist();
-      if (playlist.length === 0) return;
-      
-      let nextIndex = currentTrackIndex + 1;
-      if (isShuffle) {
-        nextIndex = Math.floor(Math.random() * playlist.length);
-      } else if (nextIndex >= playlist.length) {
-        nextIndex = 0; 
-      }
-      
-      currentTrackIndex = nextIndex;
-      if (manual) {
-        fadeAndPlay(playlist[currentTrackIndex]);
-      } else {
-        executePlay(playlist[currentTrackIndex]);
-      }
+      if (!playlist.length) return;
+      currentTrackIndex = isShuffle ? Math.floor(Math.random() * playlist.length) : (currentTrackIndex + 1) % playlist.length;
+      executePlay(playlist[currentTrackIndex]);
     }
 
     function playPrev() {
       const playlist = getPlaylist();
-      if (playlist.length === 0) return;
-      
-      currentTrackIndex = currentTrackIndex - 1;
-      if (currentTrackIndex < 0) currentTrackIndex = playlist.length - 1;
-      fadeAndPlay(playlist[currentTrackIndex]);
-    }
-
-    function fadeAndPlay(rowElement) {
-      if (isTransitioning) return;
-      if (masterAudio.paused || masterAudio.currentTime === 0) {
-        executePlay(rowElement);
-        return;
-      }
-      
-      isTransitioning = true;
-      let fadeOut = setInterval(() => {
-        if (masterAudio.volume > 0.05) {
-          masterAudio.volume = Math.max(0, masterAudio.volume - 0.05);
-        } else {
-          clearInterval(fadeOut);
-          masterAudio.pause();
-          executePlay(rowElement);
-        }
-      }, 40); 
+      if (!playlist.length) return;
+      currentTrackIndex = currentTrackIndex - 1 < 0 ? playlist.length - 1 : currentTrackIndex - 1;
+      executePlay(playlist[currentTrackIndex]);
     }
 
     function executePlay(rowElement) {
-      const fileUrl = rowElement.getAttribute('data-url');
-      const trackName = rowElement.getAttribute('data-name');
-      const trackId = rowElement.getAttribute('data-id');
-
       document.querySelectorAll('.track-item').forEach(el => el.classList.remove('playing'));
       rowElement.classList.add('playing');
-
-      const cleanName = trackName.split('/').pop().replace('.flac', '').replace('.mp3', '').replace('.wav', '');
-      currentTitle.innerText = cleanName;
+      currentTitle.innerText = rowElement.getAttribute('data-name').split('/').pop().replace('.flac','').replace('.mp3','');
       
-      const playerCover = document.getElementById('player-cover');
-      const playerCoverFallback = document.getElementById('player-cover-fallback');
-      playerCover.src = "/cover/" + trackName;
+      playerCover.src = "/cover/" + rowElement.getAttribute('data-name');
       playerCover.style.display = "block";
-      playerCoverFallback.style.display = "none";
+      document.getElementById('player-cover-fallback').style.display = "none";
       
-      masterAudio.src = fileUrl;
-      
-      // LIVE COUNTER FIX
-      fetch(`/add_play/${trackId}`, { method: 'POST' }).then(() => {
-        const playCounter = document.getElementById('plays-' + trackId);
-        if (playCounter) {
-          playCounter.innerText = parseInt(playCounter.innerText) + 1;
-        }
+      masterAudio.src = rowElement.getAttribute('data-url');
+      fetch(`/add_play/${rowElement.getAttribute('data-id')}`, { method: 'POST' }).then(() => {
+        let pc = document.getElementById('plays-' + rowElement.getAttribute('data-id'));
+        if (pc) pc.innerText = parseInt(pc.innerText) + 1;
       });
 
-      masterAudio.volume = 0;
       masterAudio.play();
       playPauseBtn.innerText = "⏸";
-      
-      const targetVolume = volumeBar.value;
-      let fadeIn = setInterval(() => {
-        if (masterAudio.volume < targetVolume - 0.05) {
-          masterAudio.volume += 0.05;
-        } else {
-          masterAudio.volume = targetVolume;
-          clearInterval(fadeIn);
-          isTransitioning = false;
-        }
-      }, 40);
     }
 
     masterAudio.addEventListener('timeupdate', () => {
       seekBar.value = masterAudio.currentTime;
-      currentTimeEl.innerText = formatTime(masterAudio.currentTime);
-      
-      if (masterAudio.duration && (masterAudio.duration - masterAudio.currentTime <= 3) && !isTransitioning) {
-        isTransitioning = true;
-        let fadeOut = setInterval(() => {
-          if (masterAudio.volume > 0.05) {
-            masterAudio.volume = Math.max(0, masterAudio.volume - 0.05);
-          } else {
-            clearInterval(fadeOut);
-            playNext(false); 
-          }
-        }, 50);
-      }
+      document.getElementById('current-time').innerText = formatTime(masterAudio.currentTime);
+      if (masterAudio.duration && masterAudio.duration - masterAudio.currentTime <= 0.5) playNext(false);
     });
-
-    function togglePlay() {
-      if (masterAudio.src === "") return;
-      if (masterAudio.paused) {
-        masterAudio.play();
-        playPauseBtn.innerText = "⏸";
-      } else {
-        masterAudio.pause();
-        playPauseBtn.innerText = "▶";
-      }
-    }
-
-    function changeVolume(val) {
-      if (!isTransitioning) masterAudio.volume = val;
-    }
-
     masterAudio.addEventListener('loadedmetadata', () => {
       seekBar.max = masterAudio.duration;
-      totalTimeEl.innerText = formatTime(masterAudio.duration);
+      document.getElementById('total-time').innerText = formatTime(masterAudio.duration);
     });
+    seekBar.addEventListener('input', () => masterAudio.currentTime = seekBar.value);
+    
+    function togglePlay() {
+      if (!masterAudio.src) return;
+      masterAudio.paused ? masterAudio.play() : masterAudio.pause();
+      playPauseBtn.innerText = masterAudio.paused ? "▶" : "⏸";
+    }
+    function changeVolume(val) { masterAudio.volume = val; }
 
-    seekBar.addEventListener('input', () => {
-      masterAudio.currentTime = seekBar.value;
-    });
-
-    // --- VISUALIZER ---
     const canvas = document.getElementById('visualizer');
     const ctx = canvas.getContext('2d');
 
@@ -363,7 +285,8 @@
 
     function setupVisualizer() {
       if (isVisualizerSetup) return;
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioContext = new AudioContext();
       analyser = audioContext.createAnalyser();
       source = audioContext.createMediaElementSource(masterAudio);
       source.connect(analyser);
@@ -375,6 +298,10 @@
 
     function drawVisualizer() {
       requestAnimationFrame(drawVisualizer);
+      
+      // NEW: CPU Saver. Kills the drawing loop entirely on phones to stop cracking.
+      if (window.innerWidth <= 768) return; 
+
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
       analyser.getByteFrequencyData(dataArray);
@@ -396,8 +323,8 @@
         ctx.strokeStyle = `rgba(178, 120, 255, ${dataArray[i] / 255 + 0.2})`;
         ctx.lineWidth = 4;
         ctx.lineCap = 'round';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#ff78b9';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = `rgba(178, 120, 255, 0.8)`;
         ctx.beginPath();
         ctx.moveTo(xStart, yStart);
         ctx.lineTo(xEnd, yEnd);
