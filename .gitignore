@@ -1,0 +1,22 @@
+# Virtual Environments
+env/
+venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Databases (Don't share your personal play counts/paths)
+*.db
+*.sqlite
+instance/
+
+# Audio & Playlist Files (Keep your music local!)
+*.flac
+*.mp3
+*.wav
+*.m3u
+
+# OS generated files
+.DS_Store
+Thumbs.db

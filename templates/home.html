@@ -3,53 +3,123 @@
 <head>
   <meta charset="UTF-8">
   <title>{{ app_name }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0c10">
+  
+  <!-- PWA Manifest Link -->
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon.png') }}">
+  
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=10">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 </head>
 
 <body>
   <canvas id="visualizer"></canvas>
-  <!-- Custom Backdrop Uploader -->
-  <div class="backdrop-controls">
-    <label for="bg-upload" class="glass-btn">🖼️ Change Backdrop</label>
-    <input type="file" id="bg-upload" accept="image/*" style="display: none;">
-  </div>
 
   <div class="app-container">
     <header class="app-header">
-      <h1>{{ app_name }}</h1>
+      <div class="header-flex">
+        <div>
+          <h1>{{ app_name }}</h1>
+          <form action="/" method="GET" class="search-form">
+            <input type="text" name="q" placeholder="🔍 Search track..." class="glass-input">
+            <button type="submit" class="glass-btn">Search</button>
+            <a href="/" class="glass-btn" style="text-decoration:none;">Clear</a>
+          </form>
+        </div>
+
+        <div class="top-controls">
+          <label for="bg-upload" class="glass-btn">🖼️ Backdrop</label>
+          <input type="file" id="bg-upload" accept="image/*" style="display: none;">
+        </div>
+      </div>
     </header>
 
-    <div class="track-list">
-      <ul>
-        {% for track in tracks %}
-          <!-- The ENTIRE row is now clickable! -->
-          <li class="track-card" 
-              data-url="{{ url_for('static', filename='audio/' + track.filename) }}"
-              data-name="{{ track.filename }}"
-              data-id="{{ track.id }}"
-              onclick="playFromButton(this)">
+    <!-- PLAYLISTS -->
+    <div class="playlists-container glass-panel">
+      <h3 style="margin-top: 0; font-size: 1rem;">Global Playlists</h3>
+      <div class="playlist-pills">
+        <a href="/" class="playlist-pill {% if not current_playlist %}active{% endif %}">All Tracks</a>
+        {% for pl in playlists %}
+          <a href="/?playlist_id={{ pl.id }}" class="playlist-pill {% if current_playlist and current_playlist.id == pl.id %}active{% endif %}">
+            🎵 {{ pl.name }}
+          </a>
+        {% endfor %}
+      </div>
+
+      <form action="/create_playlist" method="POST" class="create-playlist-form">
+        <input type="text" name="playlist_name" placeholder="New Playlist..." class="glass-input small-input" required>
+        <button type="submit" class="glass-btn small-btn">+</button>
+      </form>
+    </div>
+
+    <!-- TOP PLAYS (SMALL CARDS) -->
+    {% if not current_playlist and not request.args.get('q') %}
+      <h3 class="section-title">Top Plays</h3>
+      <div class="small-card-grid">
+        {% set top_tracks = tracks | sort(attribute='plays', reverse=true) %}
+        {% for track in top_tracks[:6] %}
+          <div class="track-item small-card glass-panel" 
+               data-url="/stream/{{ track.filename }}"
+               data-name="{{ track.filename }}" data-id="{{ track.id }}" 
+               onclick="playFromButton(this)">
             
-            <div class="track-left-side">
-              <!-- Album Cover Image Placeholder -->
-              <div class="list-cover">🎵</div>
-              
-              <div class="track-details">
-                <strong>{{ track.filename }}</strong> 
-                <div class="track-stats">
-                  Plays: <span id="plays-{{track.id}}">{{ track.plays }}</span> • Rating: {{ track.rating }}/5
-                </div>
+            <div class="small-cover-container">
+              <img src="/cover/{{ track.filename }}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 6px;" loading="lazy">
+              <div class="play-overlay">▶</div>
+            </div>
+            
+            <div class="small-card-details">
+              <strong>{{ track.filename.split('/')[-1] }}</strong>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <!-- ALL TRACKS (VERTICAL LIST) -->
+    <h3 class="section-title">
+      {% if current_playlist %}Playing: {{ current_playlist.name }}{% else %}All Tracks{% endif %}
+    </h3>
+    
+    <div class="vertical-track-list">
+      {% for track in tracks %}
+        <div class="track-item track-row glass-panel" 
+             data-url="/stream/{{ track.filename }}"
+             data-name="{{ track.filename }}" data-id="{{ track.id }}" 
+             onclick="playFromButton(this)">
+
+          <div class="track-left-side">
+            <img src="/cover/{{ track.filename }}" class="list-cover" style="object-fit: cover; background: rgba(255,255,255,0.1);" loading="lazy">
+            <div class="track-details">
+              <strong>{{ track.filename.split('/')[-1] }}</strong>
+              <div class="track-stats">
+                Plays: <span id="plays-{{track.id}}">{{ track.plays }}</span>
               </div>
             </div>
-            
-            <div class="track-right-side">
-              <span class="play-hint">▶</span>
-            </div>
-          </li>
-        {% endfor %}
-      </ul>
+          </div>
+
+          <div class="track-right-side">
+            <form action="/add_to_playlist" method="POST" class="add-to-pl-form" onclick="event.stopPropagation();">
+              <input type="hidden" name="track_id" value="{{ track.id }}">
+              <select name="playlist_id" class="glass-input small-input mini-dropdown" required>
+                <option value="" disabled selected>Add to...</option>
+                {% for pl in playlists %}
+                  <option value="{{ pl.id }}">{{ pl.name }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="glass-btn small-btn mini-btn">+</button>
+            </form>
+            <span class="play-hint">▶</span>
+          </div>
+        </div>
+      {% else %}
+        <p style="text-align: center; color: rgba(255,255,255,0.5); font-size: 0.9rem;">No tracks found.</p>
+      {% endfor %}
     </div>
-    <div style="height: 120px;"></div>  
+    
+    <div style="height: 120px;"></div>
   </div>
 
   <!-- THE GLASS PLAYER BAR -->
@@ -57,7 +127,8 @@
 
   <div id="premium-player" class="glass-panel">
     <div class="player-left">
-      <div class="album-art" id="player-cover">🎵</div>
+      <img src="" class="album-art" id="player-cover" style="object-fit: cover; display: none;">
+      <div class="album-art" id="player-cover-fallback">🎵</div>
       <div class="track-info">
         <div id="current-title">No track selected</div>
         <div id="current-artist">Ready to play</div>
@@ -66,9 +137,10 @@
 
     <div class="player-center">
       <div class="playback-controls">
-        <button id="prev-btn">⏮</button>
+        <button id="shuffle-btn" onclick="toggleShuffle()" title="Shuffle">🔀</button>
+        <button id="prev-btn" onclick="playPrev()">⏮</button>
         <button id="play-pause-btn" onclick="togglePlay()">▶</button>
-        <button id="next-btn">⏭</button>
+        <button id="next-btn" onclick="playNext(true)">⏭</button>
       </div>
       <div class="progress-container">
         <span id="current-time">0:00</span>
@@ -83,28 +155,45 @@
     </div>
   </div>
 
-  <!-- JAVASCRIPT -->
   <script>
-    // --- BACKDROP UPLOAD LOGIC ---
-    document.getElementById('bg-upload').addEventListener('change', function(e) {
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+          console.log('ServiceWorker registered!', reg);
+        }).catch(err => {
+          console.log('ServiceWorker registration failed: ', err);
+        });
+      });
+    }
+
+    document.getElementById('bg-upload').addEventListener('change', function (e) {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
-        reader.onload = function(event) {
-          // Instantly sets the background image without needing a server upload!
+        reader.onload = function (event) {
           document.body.style.backgroundImage = `url(${event.target.result})`;
         };
         reader.readAsDataURL(file);
       }
     });
 
-    // --- AUDIO PLAYER LOGIC ---
     const masterAudio = document.getElementById('master-audio');
     const playPauseBtn = document.getElementById('play-pause-btn');
     const currentTitle = document.getElementById('current-title');
     const seekBar = document.getElementById('seek-bar');
     const currentTimeEl = document.getElementById('current-time');
     const totalTimeEl = document.getElementById('total-time');
+    const volumeBar = document.getElementById('volume-bar');
+    const shuffleBtn = document.getElementById('shuffle-btn');
+
+    let isShuffle = false;
+    let currentTrackIndex = -1;
+    let isTransitioning = false;
+
+    function getPlaylist() {
+      return Array.from(document.querySelectorAll('.track-item'));
+    }
 
     function formatTime(seconds) {
       if (isNaN(seconds)) return "0:00";
@@ -112,29 +201,128 @@
       const sec = Math.floor(seconds % 60);
       return `${min}:${sec < 10 ? '0' : ''}${sec}`;
     }
-    
+
+    function toggleShuffle() {
+      isShuffle = !isShuffle;
+      shuffleBtn.classList.toggle('active', isShuffle);
+    }
+
     function playFromButton(rowElement) {
+      setupVisualizer();
+      const playlist = getPlaylist();
+      currentTrackIndex = playlist.indexOf(rowElement);
+      fadeAndPlay(rowElement);
+    }
+
+    function playNext(manual = false) {
+      const playlist = getPlaylist();
+      if (playlist.length === 0) return;
+      
+      let nextIndex = currentTrackIndex + 1;
+      if (isShuffle) {
+        nextIndex = Math.floor(Math.random() * playlist.length);
+      } else if (nextIndex >= playlist.length) {
+        nextIndex = 0; 
+      }
+      
+      currentTrackIndex = nextIndex;
+      if (manual) {
+        fadeAndPlay(playlist[currentTrackIndex]);
+      } else {
+        executePlay(playlist[currentTrackIndex]);
+      }
+    }
+
+    function playPrev() {
+      const playlist = getPlaylist();
+      if (playlist.length === 0) return;
+      
+      currentTrackIndex = currentTrackIndex - 1;
+      if (currentTrackIndex < 0) currentTrackIndex = playlist.length - 1;
+      fadeAndPlay(playlist[currentTrackIndex]);
+    }
+
+    function fadeAndPlay(rowElement) {
+      if (isTransitioning) return;
+      if (masterAudio.paused || masterAudio.currentTime === 0) {
+        executePlay(rowElement);
+        return;
+      }
+      
+      isTransitioning = true;
+      let fadeOut = setInterval(() => {
+        if (masterAudio.volume > 0.05) {
+          masterAudio.volume = Math.max(0, masterAudio.volume - 0.05);
+        } else {
+          clearInterval(fadeOut);
+          masterAudio.pause();
+          executePlay(rowElement);
+        }
+      }, 40); 
+    }
+
+    function executePlay(rowElement) {
       const fileUrl = rowElement.getAttribute('data-url');
       const trackName = rowElement.getAttribute('data-name');
       const trackId = rowElement.getAttribute('data-id');
-      
-      // Highlight the currently playing row
-      document.querySelectorAll('.track-card').forEach(el => el.classList.remove('playing'));
+
+      document.querySelectorAll('.track-item').forEach(el => el.classList.remove('playing'));
       rowElement.classList.add('playing');
 
-      loadAndPlay(fileUrl, trackName, trackId);
+      const cleanName = trackName.split('/').pop().replace('.flac', '').replace('.mp3', '').replace('.wav', '');
+      currentTitle.innerText = cleanName;
+      
+      const playerCover = document.getElementById('player-cover');
+      const playerCoverFallback = document.getElementById('player-cover-fallback');
+      playerCover.src = "/cover/" + trackName;
+      playerCover.style.display = "block";
+      playerCoverFallback.style.display = "none";
+      
+      masterAudio.src = fileUrl;
+      
+      // LIVE COUNTER FIX
+      fetch(`/add_play/${trackId}`, { method: 'POST' }).then(() => {
+        const playCounter = document.getElementById('plays-' + trackId);
+        if (playCounter) {
+          playCounter.innerText = parseInt(playCounter.innerText) + 1;
+        }
+      });
+
+      masterAudio.volume = 0;
+      masterAudio.play();
+      playPauseBtn.innerText = "⏸";
+      
+      const targetVolume = volumeBar.value;
+      let fadeIn = setInterval(() => {
+        if (masterAudio.volume < targetVolume - 0.05) {
+          masterAudio.volume += 0.05;
+        } else {
+          masterAudio.volume = targetVolume;
+          clearInterval(fadeIn);
+          isTransitioning = false;
+        }
+      }, 40);
     }
 
-    function loadAndPlay(fileUrl, trackName, trackId) {
-      currentTitle.innerText = trackName.replace('.flac', '').replace('.mp3', '').replace('.wav', '');
-      masterAudio.src = fileUrl;
-      masterAudio.play();
-      playPauseBtn.innerText = "⏸"; 
-      fetch(`/add_play/${trackId}`, {method: 'POST'}); 
-    }
+    masterAudio.addEventListener('timeupdate', () => {
+      seekBar.value = masterAudio.currentTime;
+      currentTimeEl.innerText = formatTime(masterAudio.currentTime);
+      
+      if (masterAudio.duration && (masterAudio.duration - masterAudio.currentTime <= 3) && !isTransitioning) {
+        isTransitioning = true;
+        let fadeOut = setInterval(() => {
+          if (masterAudio.volume > 0.05) {
+            masterAudio.volume = Math.max(0, masterAudio.volume - 0.05);
+          } else {
+            clearInterval(fadeOut);
+            playNext(false); 
+          }
+        }, 50);
+      }
+    });
 
     function togglePlay() {
-      if (masterAudio.src === "") return; 
+      if (masterAudio.src === "") return;
       if (masterAudio.paused) {
         masterAudio.play();
         playPauseBtn.innerText = "⏸";
@@ -145,13 +333,8 @@
     }
 
     function changeVolume(val) {
-      masterAudio.volume = val;
+      if (!isTransitioning) masterAudio.volume = val;
     }
-
-    masterAudio.addEventListener('timeupdate', () => {
-      seekBar.value = masterAudio.currentTime;
-      currentTimeEl.innerText = formatTime(masterAudio.currentTime);
-    });
 
     masterAudio.addEventListener('loadedmetadata', () => {
       seekBar.max = masterAudio.duration;
@@ -161,6 +344,66 @@
     seekBar.addEventListener('input', () => {
       masterAudio.currentTime = seekBar.value;
     });
+
+    // --- VISUALIZER ---
+    const canvas = document.getElementById('visualizer');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+
+    let audioContext;
+    let analyser;
+    let source;
+    let isVisualizerSetup = false;
+
+    function setupVisualizer() {
+      if (isVisualizerSetup) return;
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+      source = audioContext.createMediaElementSource(masterAudio);
+      source.connect(analyser);
+      analyser.connect(audioContext.destination);
+      analyser.fftSize = 256;
+      isVisualizerSetup = true;
+      drawVisualizer();
+    }
+
+    function drawVisualizer() {
+      requestAnimationFrame(drawVisualizer);
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      analyser.getByteFrequencyData(dataArray);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const baseRadius = 150;
+
+      for (let i = 0; i < bufferLength; i++) {
+        const barHeight = dataArray[i] * 0.8;
+        const rads = (Math.PI * 2) / bufferLength;
+        const angle = rads * i;
+        const xStart = centerX + Math.cos(angle) * baseRadius;
+        const yStart = centerY + Math.sin(angle) * baseRadius;
+        const xEnd = centerX + Math.cos(angle) * (baseRadius + barHeight);
+        const yEnd = centerY + Math.sin(angle) * (baseRadius + barHeight);
+
+        ctx.strokeStyle = `rgba(178, 120, 255, ${dataArray[i] / 255 + 0.2})`;
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#ff78b9';
+        ctx.beginPath();
+        ctx.moveTo(xStart, yStart);
+        ctx.lineTo(xEnd, yEnd);
+        ctx.stroke();
+      }
+    }
   </script>
 </body>
 </html>
